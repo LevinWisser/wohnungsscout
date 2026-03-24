@@ -65,7 +65,7 @@ def sende_benachrichtigung(inserate: list):
     try:
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
             server.starttls()
-            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+            server.login(EMAIL_SENDER, EMAIL_PASSWORD.replace(" ", ""))
             server.sendmail(EMAIL_SENDER, EMAIL_RECIPIENT, msg.as_string())
         print(f"  [Email] Benachrichtigung für {len(inserate)} Inserate gesendet.")
     except Exception as e:
