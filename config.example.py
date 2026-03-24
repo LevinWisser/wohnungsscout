@@ -24,6 +24,7 @@ SMTP_PORT = 587
 EMAIL_SENDER = "wisserlevin@gmail.com"      # Deine Gmail-Adresse
 EMAIL_PASSWORD = ""                          # App-Passwort (nicht dein normales Passwort!)
 EMAIL_RECIPIENT = "wisserlevin@gmail.com"   # Wohin die Benachrichtigung geht
+MAX_INSERATE_PRO_EMAIL = 10                 # Max. Inserate pro E-Mail (Rest kommt in Folge-Mails)
 
 # --- Datenbank ---
 DB_PATH = "data/inserate.db"
