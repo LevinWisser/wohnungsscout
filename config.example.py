@@ -15,7 +15,7 @@ SEARCH_RADIUS_KM = 15
 # --- Filter ---
 MIN_ROOMS = 3          # Mindestanzahl Zimmer (0 = kein Filter)
 MIN_SIZE_SQM = 60      # Mindestfläche in qm (0 = kein Filter)
-MAX_RENT_EUR = 0       # Maximale Miete in € (0 = kein Filter)
+MAX_RENT_EUR = 1100    # Maximale Miete in € (0 = kein Filter)
 
 # --- Benachrichtigung (E-Mail) ---
 EMAIL_ENABLED = True
