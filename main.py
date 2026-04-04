@@ -12,9 +12,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from database.db import init_db, ist_neu, speichere_inserat
 from scraper.kleinanzeigen import suche_inserate as suche_kleinanzeigen
-from scraper.immoscout import suche_inserate as suche_immoscout
+from scraper.immowelt import suche_inserate as suche_immowelt
 from notifier.email_notifier import sende_benachrichtigung
-from config import IMMOSCOUT_ENABLED
+from config import IMMOWELT_ENABLED
 
 
 def main():
@@ -28,10 +28,10 @@ def main():
     print("Suche auf Kleinanzeigen.de...")
     gefundene_inserate = suche_kleinanzeigen()
 
-    # Inserate von ImmoScout24 holen (falls aktiviert)
-    if IMMOSCOUT_ENABLED:
-        print("Suche auf ImmoScout24...")
-        gefundene_inserate += suche_immoscout()
+    # Inserate von Immowelt holen (falls aktiviert)
+    if IMMOWELT_ENABLED:
+        print("Suche auf Immowelt...")
+        gefundene_inserate += suche_immowelt()
 
     print(f"Gesamt gefunden: {len(gefundene_inserate)} passende Inserate")
 

@@ -1,8 +1,12 @@
 """
-ImmoScout24-Scraper via HTML (kein API-Key nötig)
+ImmoScout24-Scraper via Playwright (headless Chromium)
 
-IS24 rendert Suchergebnisse serverseitig (SSR) – die Listings sind direkt
-im HTML enthalten, entweder als eingebettetes JSON oder als article-Elemente.
+IS24 blockiert einfache HTTP-Requests mit CloudFront WAF.
+Playwright startet einen echten (headless) Chrome-Browser und umgeht das.
+
+Einmaliges Setup auf dem Pi:
+  pip install playwright
+  playwright install chromium
 
 Konfiguration in config.py:
   IMMOSCOUT_LOCATION_SLUG  z.B. "rheinland-pfalz/diez"
@@ -14,34 +18,22 @@ Suchfilter werden aus den bestehenden Werten übernommen:
 
 import re
 import json
-import time
-import requests
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 from bs4 import BeautifulSoup
 from config import (
     IMMOSCOUT_LOCATION_SLUG,
     MIN_ROOMS,
     MIN_SIZE_SQM,
     MAX_RENT_EUR,
-    REQUEST_DELAY_SECONDS,
-    USER_AGENT,
 )
 
 _BASE_URL = "https://www.immobilienscout24.de/Suche/de/{slug}/wohnung-mieten"
 _EXPOSE_URL = "https://www.immobilienscout24.de/expose/{id}"
 
-_HEADERS = {
-    "User-Agent": USER_AGENT,
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-    "Accept-Language": "de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-}
-
 
 def suche_inserate() -> list:
     """
-    Sucht Mietwohnungen auf ImmoScout24 via HTML-Scraping.
+    Sucht Mietwohnungen auf ImmoScout24 via Playwright.
     Gibt eine Liste von Inseraten zurück (gleiche Struktur wie kleinanzeigen.py).
     """
     if not IMMOSCOUT_LOCATION_SLUG:
@@ -49,25 +41,53 @@ def suche_inserate() -> list:
         return []
 
     url = _BASE_URL.format(slug=IMMOSCOUT_LOCATION_SLUG)
-    params = _build_params(page=1)
+    params = _build_params()
+    if params:
+        query = "&".join(f"{k}={v}" for k, v in params.items())
+        url = f"{url}?{query}"
 
     try:
-        response = requests.get(url, params=params, headers=_HEADERS, timeout=15)
-        response.raise_for_status()
-    except requests.RequestException as e:
-        print(f"  ImmoScout24: Fehler beim Request – {e}")
+        html = _lade_seite(url)
+    except Exception as e:
+        print(f"  ImmoScout24: Fehler beim Laden – {e}")
         return []
 
-    inserate = _parse_seite(response.text)
+    inserate = _parse_seite(html)
     print(f"  ImmoScout24: {len(inserate)} passende Inserate gefunden")
     return inserate
 
 
-def _build_params(page: int) -> dict:
+def _lade_seite(url: str) -> str:
+    """Öffnet die Seite mit Playwright und gibt das gerenderte HTML zurück."""
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        context = browser.new_context(
+            viewport={"width": 1280, "height": 800},
+            locale="de-DE",
+            user_agent=(
+                "Mozilla/5.0 (X11; Linux aarch64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/122.0.0.0 Safari/537.36"
+            ),
+        )
+        page = context.new_page()
+
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            # Kurz warten bis Listings gerendert sind
+            page.wait_for_selector("article[data-obid]", timeout=10000)
+        except PlaywrightTimeout:
+            pass  # Seite teilweise geladen – trotzdem parsen
+
+        html = page.content()
+        browser.close()
+
+    return html
+
+
+def _build_params() -> dict:
     """Baut die URL-Parameter für die IS24-Suche."""
     params = {}
-    if page > 1:
-        params["pagenumber"] = page
     if MIN_ROOMS > 0:
         params["numberofrooms"] = f"{float(MIN_ROOMS):.1f}-"
     if MIN_SIZE_SQM > 0:
@@ -80,7 +100,7 @@ def _build_params(page: int) -> dict:
 def _parse_seite(html: str) -> list:
     """
     Versucht zuerst, eingebettetes JSON aus dem Script-Tag zu lesen.
-    Fällt auf HTML-Parsing zurück falls das nicht klappt.
+    Fällt auf HTML-Parsing der gerenderten article-Elemente zurück.
     """
     inserate = _extrahiere_aus_json(html)
     if inserate is not None:
@@ -89,11 +109,7 @@ def _parse_seite(html: str) -> list:
 
 
 def _extrahiere_aus_json(html: str) -> list | None:
-    """
-    IS24 bettet Suchergebnisse als JSON in die SSR-Seite ein.
-    Gibt None zurück wenn kein JSON gefunden wurde (→ HTML-Fallback).
-    """
-    # IS24 speichert Listings in einem <script>-Tag als JSON-Array mit "resultlistEntry"-Objekten
+    """IS24 bettet Suchergebnisse manchmal als JSON in Script-Tags ein."""
     match = re.search(
         r'"resultlistEntries"\s*:\s*\[\s*\{[^}]*"resultlistEntry"\s*:\s*(\[.+?\])\s*\}',
         html,
@@ -113,9 +129,7 @@ def _extrahiere_aus_json(html: str) -> list | None:
             inserat_id = str(entry.get("@id", ""))
             if not inserat_id:
                 continue
-
-            re_data = entry.get("resultlistRealEstate", {})
-            inserat = _baue_inserat(inserat_id, re_data)
+            inserat = _baue_inserat_aus_json(inserat_id, entry.get("resultlistRealEstate", {}))
             if inserat:
                 inserate.append(inserat)
         except Exception:
@@ -125,40 +139,31 @@ def _extrahiere_aus_json(html: str) -> list | None:
 
 
 def _extrahiere_aus_html(html: str) -> list:
-    """
-    HTML-Fallback: parst <article data-obid="...">-Elemente direkt.
-    IS24 rendert die Listing-Karten serverseitig.
-    """
+    """Parst gerenderte <article data-obid="...">-Elemente."""
     soup = BeautifulSoup(html, "lxml")
     inserate = []
 
     for artikel in soup.find_all("article", attrs={"data-obid": True}):
         try:
             inserat_id = artikel["data-obid"]
+            text = artikel.get_text(" ", strip=True)
 
-            # Titel (verschiedene IS24-Versionen nutzen unterschiedliche Tags)
-            titel_tag = (
-                artikel.find("h5")
-                or artikel.find(attrs={"data-testid": re.compile(r"result-list-entry.*title", re.I)})
-            )
+            titel_tag = artikel.find("h5") or artikel.find(["h2", "h3", "h4"])
             titel = titel_tag.get_text(strip=True) if titel_tag else "Kein Titel"
 
-            # Preis – Suche nach Zahl gefolgt von € im Artikel
-            preis = _suche_text(artikel, r"([\d.,]+)\s*€")
-            preis = f"{preis} €" if preis else "k.A."
+            preis_match = re.search(r"([\d.]+(?:,\d+)?)\s*€", text)
+            preis = f"{preis_match.group(1)} €" if preis_match else "k.A."
 
-            # Zimmer – Suche nach "X Zi." Muster
-            zimmer_match = re.search(r"([\d,]+)\s*Zi\.", artikel.get_text())
+            zimmer_match = re.search(r"([\d,]+)\s*Zi\.", text)
             zimmer = f"{zimmer_match.group(1)} Zi." if zimmer_match else ""
 
-            # Größe – Suche nach "X m²" Muster
-            groesse_match = re.search(r"([\d,.]+)\s*m²", artikel.get_text())
+            groesse_match = re.search(r"([\d,.]+)\s*m²", text)
             groesse = f"{groesse_match.group(1)} m²" if groesse_match else ""
 
-            # Ort
-            ort_tag = artikel.find(attrs={"data-testid": re.compile(r".*address.*", re.I)})
-            if not ort_tag:
-                ort_tag = artikel.find(class_=re.compile(r"address|location|ort", re.I))
+            ort_tag = (
+                artikel.find(attrs={"data-testid": re.compile(r"address", re.I)})
+                or artikel.find(class_=re.compile(r"address|location", re.I))
+            )
             ort = ort_tag.get_text(strip=True) if ort_tag else ""
 
             inserate.append({
@@ -175,12 +180,12 @@ def _extrahiere_aus_html(html: str) -> list:
             continue
 
     if not inserate:
-        print("  ImmoScout24: Keine Listings im HTML gefunden – IS24 hat evtl. geblockt oder die Seitenstruktur hat sich geändert.")
+        print("  ImmoScout24: Keine Listings gefunden – evtl. CAPTCHA oder geändertes Seitenlayout.")
 
     return inserate
 
 
-def _baue_inserat(inserat_id: str, re_data: dict) -> dict | None:
+def _baue_inserat_aus_json(inserat_id: str, re_data: dict) -> dict | None:
     """Baut ein Inserat-Dict aus IS24 JSON-Daten."""
     titel = re_data.get("title", "Kein Titel")
 
@@ -189,10 +194,7 @@ def _baue_inserat(inserat_id: str, re_data: dict) -> dict | None:
 
     zimmer_val = re_data.get("numberOfRooms")
     if zimmer_val is not None:
-        if zimmer_val == int(zimmer_val):
-            zimmer = f"{int(zimmer_val)} Zi."
-        else:
-            zimmer = f"{zimmer_val:.1f} Zi.".replace(".", ",")
+        zimmer = f"{int(zimmer_val)} Zi." if zimmer_val == int(zimmer_val) else f"{zimmer_val:.1f} Zi.".replace(".", ",")
     else:
         zimmer = ""
 
@@ -214,10 +216,3 @@ def _baue_inserat(inserat_id: str, re_data: dict) -> dict | None:
         "url": _EXPOSE_URL.format(id=inserat_id),
         "plattform": "ImmoScout24",
     }
-
-
-def _suche_text(tag, pattern: str) -> str | None:
-    """Sucht per Regex im Text-Inhalt eines BS4-Tags."""
-    text = tag.get_text()
-    match = re.search(pattern, text.replace(".", "").replace(",", "."))
-    return match.group(1) if match else None

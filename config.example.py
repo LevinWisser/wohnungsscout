@@ -26,11 +26,11 @@ EMAIL_PASSWORD = ""                          # App-Passwort (nicht dein normales
 EMAIL_RECIPIENT = "wisserlevin@gmail.com"   # Wohin die Benachrichtigung geht
 MAX_INSERATE_PRO_EMAIL = 10                 # Max. Inserate pro E-Mail (Rest kommt in Folge-Mails)
 
-# --- ImmoScout24 ---
-# Suchregion als URL-Slug: Bundesland/Stadt (Kleinschreibung, Leerzeichen als Bindestrich)
-# Beispiele: "rheinland-pfalz/diez", "hessen/frankfurt-am-main", "bayern/muenchen"
-IMMOSCOUT_ENABLED = True
-IMMOSCOUT_LOCATION_SLUG = "rheinland-pfalz/diez"
+# --- Immowelt ---
+# Stadtname für immowelt.de/liste/{slug}/wohnungen/mieten (Kleinschreibung, keine Umlaute)
+IMMOWELT_ENABLED = True
+IMMOWELT_LOCATION_SLUG = "diez"
+IMMOWELT_SEARCH_RADIUS_KM = 15
 
 # --- Datenbank ---
 DB_PATH = "data/inserate.db"
