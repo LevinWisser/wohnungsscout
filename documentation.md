@@ -2,11 +2,11 @@
 
 ## Was ist das?
 
-Wohnungsscout ist ein automatischer Immobilien-Beobachter für die Region **Diez und Umgebung** (Görgeshausen, Nentershausen, Hambach, Aull). Das Script durchsucht Wohnungsplattformen nach passenden Inseraten, filtert nach konfigurierten Kriterien und schickt eine E-Mail-Benachrichtigung wenn neue Inserate auftauchen.
+Wohnungsscout ist ein automatischer Immobilien-Beobachter für die Region **Diez und Umgebung** (Görgeshausen, Nentershausen, Hambach, Aull). Das Script durchsucht **Kleinanzeigen.de** und **Immowelt** nach passenden Inseraten, filtert nach konfigurierten Kriterien und schickt eine E-Mail-Benachrichtigung wenn neue Inserate auftauchen.
 
 Das Ziel: Immer informiert sein ohne täglich selbst suchen zu müssen – ideal für eine mittel- bis langfristige Wohnungssuche in einer Region mit überschaubarem Angebot.
 
-Das Script läuft auf einem **Raspberry Pi** und wird dort über einen **Cron Job** automatisch ausgeführt.
+Das Script läuft auf einem **Raspberry Pi 5** und wird dort über einen **Cron Job** automatisch ausgeführt.
 
 ---
 
@@ -44,7 +44,8 @@ python3 main.py
 ```
 
 Erwartete Ausgabe beim ersten Lauf:
-- Seiten 1-8 werden gescraped (~197 Inserate im Umkreis)
+- Kleinanzeigen: Seiten 1–8 werden gescraped (~197 Inserate im Umkreis)
+- Immowelt: 1 Seite mit ~8–30 passenden Inseraten
 - Neue Inserate werden in `data/inserate.db` gespeichert
 - E-Mail-Benachrichtigung wird verschickt
 
@@ -80,7 +81,8 @@ wohnungsscout/
 │
 ├── scraper/
 │   ├── __init__.py
-│   └── kleinanzeigen.py      # Scraper für kleinanzeigen.de (15km Umkreis ab Diez)
+│   ├── kleinanzeigen.py      # Scraper für kleinanzeigen.de (15km Umkreis ab Diez)
+│   └── immowelt.py           # Scraper für immowelt.de (15km Umkreis ab Diez)
 │
 ├── notifier/
 │   ├── __init__.py
@@ -100,13 +102,14 @@ wohnungsscout/
 
 1. `main.py` wird aufgerufen (manuell oder per Cron Job)
 2. Die SQLite-Datenbank wird initialisiert (beim ersten Start automatisch erstellt)
-3. `kleinanzeigen.py` sucht Mietwohnungen im 15km-Umkreis um Diez (Ortscode `l19222`)
-4. Der HTML-Inhalt wird mit BeautifulSoup geparst – Titel, Preis, Zimmer, Größe, URL werden extrahiert
-5. Inserate die nicht den Filtern entsprechen (zu wenig Zimmer, zu klein) werden aussortiert
-6. Jedes verbleibende Inserat wird mit der Datenbank abgeglichen: Ist die ID schon bekannt?
-7. Nur **neue** Inserate werden in der Datenbank gespeichert
-8. Gibt es neue Inserate, wird eine **HTML-E-Mail** verschickt – max. 10 Inserate pro Mail, bei mehr kommen Folge-Mails (1/3, 2/3, 3/3)
-9. Gibt es nichts Neues, passiert nichts – kein Spam
+3. **Kleinanzeigen-Scraper:** Sucht Mietwohnungen im 15km-Umkreis um Diez (Ortscode `l19222`), iteriert über alle Ergebnisseiten
+4. **Immowelt-Scraper:** Sucht Mietwohnungen über `immowelt.de/liste/diez/wohnungen/mieten` mit Radius, Zimmer- und Preisfilter
+5. Beide Ergebnislisten werden zusammengeführt
+6. Inserate die nicht den Filtern entsprechen (zu wenig Zimmer, zu klein, zu teuer) werden aussortiert
+7. Jedes verbleibende Inserat wird mit der Datenbank abgeglichen: Ist die ID schon bekannt?
+8. Nur **neue** Inserate werden in der Datenbank gespeichert
+9. Gibt es neue Inserate, wird eine **HTML-E-Mail** verschickt – max. 10 Inserate pro Mail, bei mehr kommen Folge-Mails (1/3, 2/3, 3/3)
+10. Gibt es nichts Neues, passiert nichts – kein Spam
 
 ---
 
@@ -115,12 +118,15 @@ wohnungsscout/
 | Variable | Bedeutung | Standard |
 |---|---|---|
 | `DIEZ_LOCATION_CODE` | Kleinanzeigen-Ortscode für Diez | `l19222` – nicht ändern |
-| `SEARCH_RADIUS_KM` | Umkreis in km | 15 |
-| `MIN_ROOMS` | Mindestanzahl Zimmer | 3 |
-| `MIN_SIZE_SQM` | Mindestfläche in m² | 60 |
-| `MAX_RENT_EUR` | Maximale Miete (0 = kein Filter) | 0 |
+| `SEARCH_RADIUS_KM` | Umkreis in km (Kleinanzeigen) | `15` |
+| `MIN_ROOMS` | Mindestanzahl Zimmer | `3` |
+| `MIN_SIZE_SQM` | Mindestfläche in m² | `60` |
+| `MAX_RENT_EUR` | Maximale Miete (0 = kein Filter) | `1100` |
 | `EMAIL_PASSWORD` | Gmail App-Passwort | leer – muss gesetzt werden! |
-| `MAX_INSERATE_PRO_EMAIL` | Max. Inserate pro E-Mail | 10 |
+| `MAX_INSERATE_PRO_EMAIL` | Max. Inserate pro E-Mail | `10` |
+| `IMMOWELT_ENABLED` | Immowelt-Suche aktivieren | `True` |
+| `IMMOWELT_LOCATION_SLUG` | Stadtname für Immowelt-URL | `"diez"` |
+| `IMMOWELT_SEARCH_RADIUS_KM` | Suchradius für Immowelt in km | `15` |
 
 ---
 
@@ -128,18 +134,10 @@ wohnungsscout/
 
 | Entscheidung | Begründung |
 |---|---|
-| **Kleinanzeigen.de als erste Plattform** | Einfachste HTML-Struktur, kein JavaScript-Rendering nötig, viele Privatanbieter im ländlichen Raum |
-| **Radius-Suche statt Einzel-Orte** | Eine Suche mit `r15` deckt alle Zielorte ab, sauberer als 5 separate Suchen mit Deduplizierung |
+| **Kleinanzeigen.de + Immowelt** | Beide Plattformen decken den Markt gut ab; Kleinanzeigen hat viele Privatanbieter, Immowelt eher Makler. Beide erlauben einfaches HTML-Scraping ohne Bot-Schutz. |
+| **ImmoScout24 nicht unterstützt** | IS24 blockiert automatisierte Requests mit Imperva WAF (CloudFront, „Ich bin kein Roboter"-Seite) – auch mit headless Chromium (Playwright). Nicht umgehbar ohne erheblichen Aufwand. |
+| **Radius-Suche statt Einzel-Orte** | Eine Suche mit Radius deckt alle Zielorte ab, sauberer als mehrere separate Suchen mit Deduplizierung |
 | **SQLite statt CSV/JSON** | Atomare Schreiboperationen, einfache ID-Abfragen, kein externer Datenbankserver nötig |
 | **Gmail SMTP** | Kein eigener Mailserver nötig, zuverlässig, kostenlos |
 | **Cron statt interner Scheduler** | Script läuft einmal durch und beendet sich – einfacher, stabiler, Pi-freundlich |
-| **requests + BeautifulSoup + lxml** | Leichtgewichtig, ausreichend für statische Seiten, läuft problemlos auf ARM |
-
----
-
-## Geplante Erweiterungen
-
-- [ ] Scraper für ImmoScout24 (zweite Plattform)
-- [ ] Scraper für Immowelt
-- [ ] Telegram-Benachrichtigung als Alternative zu E-Mail
-- [ ] Preisstatistiken (Durchschnittsmiete pro Ort)
+| **requests + BeautifulSoup + lxml** | Leichtgewichtig, ausreichend für statische Seiten, läuft problemlos auf ARM (Pi 5) |

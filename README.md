@@ -1,6 +1,6 @@
 # Wohnungsscout
 
-Automatischer Immobilien-Beobachter für die Region **Diez und Umgebung** (Rheinland-Pfalz). Durchsucht Kleinanzeigen.de im 15km-Umkreis nach Mietwohnungen und schickt eine E-Mail-Benachrichtigung sobald neue Inserate auftauchen.
+Automatischer Immobilien-Beobachter für die Region **Diez und Umgebung** (Rheinland-Pfalz). Durchsucht **Kleinanzeigen.de** und **Immowelt** im 15km-Umkreis nach Mietwohnungen und schickt eine E-Mail-Benachrichtigung sobald neue Inserate auftauchen.
 
 Läuft auf einem Raspberry Pi als Cron Job – vollständig automatisch, 24/7.
 
@@ -8,10 +8,10 @@ Läuft auf einem Raspberry Pi als Cron Job – vollständig automatisch, 24/7.
 
 ## Features
 
-- Sucht stündlich nach neuen Inseraten im konfigurierten Umkreis
-- Filtert nach Zimmeranzahl und Mindestgröße
+- Sucht stündlich nach neuen Inseraten auf Kleinanzeigen.de und Immowelt
+- Filtert nach Zimmeranzahl, Mindestgröße und Maximalmiete
 - Speichert gesehene Inserate in einer lokalen Datenbank – jedes Inserat kommt nur einmal
-- Sendet HTML-E-Mails mit direkten Links zu den Inseraten
+- Sendet HTML-E-Mails mit klickbaren Links direkt zum Inserat
 - Bei vielen neuen Inseraten werden automatisch mehrere übersichtliche Mails verschickt
 
 ---
@@ -35,12 +35,15 @@ Alle Einstellungen in `config.py` (wird aus `config.example.py` erstellt):
 
 | Variable | Bedeutung | Standard |
 |---|---|---|
-| `SEARCH_RADIUS_KM` | Suchradius ab Diez in km | `15` |
+| `SEARCH_RADIUS_KM` | Suchradius ab Diez in km (Kleinanzeigen) | `15` |
 | `MIN_ROOMS` | Mindestanzahl Zimmer | `3` |
 | `MIN_SIZE_SQM` | Mindestfläche in m² | `60` |
-| `MAX_RENT_EUR` | Maximale Miete (0 = kein Filter) | `0` |
+| `MAX_RENT_EUR` | Maximale Miete (0 = kein Filter) | `1100` |
 | `EMAIL_PASSWORD` | Gmail App-Passwort | – |
 | `MAX_INSERATE_PRO_EMAIL` | Max. Inserate pro E-Mail | `10` |
+| `IMMOWELT_ENABLED` | Immowelt-Suche aktivieren | `True` |
+| `IMMOWELT_LOCATION_SLUG` | Stadtname für Immowelt-URL | `"diez"` |
+| `IMMOWELT_SEARCH_RADIUS_KM` | Suchradius für Immowelt in km | `15` |
 
 ### Gmail App-Passwort einrichten
 
@@ -80,7 +83,8 @@ wohnungsscout/
 ├── config.example.py       # Vorlage für config.py
 ├── requirements.txt
 ├── scraper/
-│   └── kleinanzeigen.py    # Scraper für kleinanzeigen.de
+│   ├── kleinanzeigen.py    # Scraper für kleinanzeigen.de
+│   └── immowelt.py         # Scraper für immowelt.de
 ├── notifier/
 │   └── email_notifier.py   # E-Mail-Benachrichtigung
 └── database/
