@@ -26,13 +26,11 @@ EMAIL_PASSWORD = ""                          # App-Passwort (nicht dein normales
 EMAIL_RECIPIENT = "wisserlevin@gmail.com"   # Wohin die Benachrichtigung geht
 MAX_INSERATE_PRO_EMAIL = 10                 # Max. Inserate pro E-Mail (Rest kommt in Folge-Mails)
 
-# --- ImmoScout24 API ---
-# Developer-Account: https://developer.immobilienscout24.de
-# GeoCode-ID ermitteln: https://rest.immobilienscout24.de/restapi/api/gis/v1.0/geoautocomplete/de/Diez
+# --- ImmoScout24 ---
+# Suchregion als URL-Slug: Bundesland/Stadt (Kleinschreibung, Leerzeichen als Bindestrich)
+# Beispiele: "rheinland-pfalz/diez", "hessen/frankfurt-am-main", "bayern/muenchen"
 IMMOSCOUT_ENABLED = True
-IMMOSCOUT_CONSUMER_KEY = ""        # Consumer Key aus dem Developer Portal
-IMMOSCOUT_CONSUMER_SECRET = ""     # Consumer Secret aus dem Developer Portal
-IMMOSCOUT_GEO_CODE_ID = ""         # z.B. "1276003001002" für Diez – s.o. ermitteln
+IMMOSCOUT_LOCATION_SLUG = "rheinland-pfalz/diez"
 
 # --- Datenbank ---
 DB_PATH = "data/inserate.db"
