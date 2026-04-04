@@ -29,6 +29,7 @@ def _baue_email_html(inserate: list, teil: int, gesamt_teile: int) -> str:
                 <tr><td style="padding:2px 12px 2px 0;"><b>Ort:</b></td><td>{ins['ort']}</td></tr>
                 <tr><td style="padding:2px 12px 2px 0;"><b>Quelle:</b></td><td>{ins['plattform']}</td></tr>
             </table>
+            <a href="{ins['url']}" style="display:inline-block; margin-top:10px; padding:6px 14px; background:#2980b9; color:#fff; text-decoration:none; border-radius:4px; font-family:sans-serif; font-size:13px;">Zum Inserat →</a>
         </div>
         """)
 
